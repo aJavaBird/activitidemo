@@ -34,19 +34,19 @@ public class HolidayV2FlowTest {
         String flowKey = "holidayV2"; // 这个key是 act_re_procdef 表中的key，同时也是 bpmn 文件中的 process 的 id
         // 以下每个方法为独立的一个步骤，理论上说，只能有一个方法运行，其他方法都应该注释了，否则不好看执行效果
         // 1、部署流程，需呀部署流程后，才能进行后续操作
-//        doDeployment();
+        doDeployment();
         // 2、zhangsan 申请流程，流程启动
-//        startProcess(flowKey,"lisi");
-        String approver = "renshi01"; // 审批人
+//        startProcess(flowKey,"wangwu");
+        String approver = "zuzhang02"; // 审批人
 //        // 3、查询待办
-        findPersonalTaskList(flowKey,approver);
+//        findPersonalTaskList(flowKey,approver);
         // 4、完成待办 （3、4 两步是需要循环操作的）
 //        String taskId = "47503"; // 这个任务id是从上一步中查询得到的
 //        completTask(flowKey,approver,taskId);
         // 5、查询历史信息
         /**  查询 act_hi_actinst 表，条件：根据 processInstanceId 查询
          * 也可以查询 act_hi_taskinst 表，但是这个表查询的数据不包含网管节点，仅为任务节点 */
-        String processInstanceId = "42501"; // 这个其实就是 act_hi_procinst 表 的 ID_
+        String processInstanceId = "57501"; // 这个其实就是 act_hi_procinst 表 的 ID_
         logger.info("历史信息如下：");
         findHistoryInfo(processInstanceId); // 也可以使用 processDefinitionId 查询，但是需要改一下代码
     }
@@ -95,21 +95,22 @@ public class HolidayV2FlowTest {
         Map<String, Object> map = new HashMap<>();
         // 创建请假pojo对象
         HolidayInfo holidayInfo = new HolidayInfo();
-        holidayInfo.setDays(3).setFromDate("2021-10-08").setToDate("2021-10-10").setRemark("zhc请假测试");
+        holidayInfo.setDays(5).setFromDate("2021-10-08").setToDate("2021-10-10").setRemark("zhc请假测试");
         //定义流程变量，把出差pojo对象放入map
         map.put("holidayInfo",holidayInfo);
         map.put("applyMan",applyUserName);
         // 这些变量都是在流程图bpmn图中配置的，这里需要设置实际值
         // 以下几个变量可以是根据 applyUserName 动态算出来的
-        map.put("zuzhang","zuzhang01"); // applyUserName 的小组长
-        map.put("zhengwei","zhengwei01"); // applyUserName 的政委
-        map.put("bumenjingli","bumenjingli01,bumenjingli02"); // applyUserName 的部门经理
-        map.put("renshi","renshi01"); // applyUserName 的人事负责人
-        map.put("fenguan","fenguan01,fenguan02"); // applyUserName 的分管领导
+        map.put("zuzhang","zuzhang02"); // applyUserName 的小组长
+        map.put("zhengwei","zhengwei02"); // applyUserName 的政委
+        map.put("bumenjingli","bumenjingli03,bumenjingli04"); // applyUserName 的部门经理
+        map.put("renshi","renshi02"); // applyUserName 的人事负责人
+        map.put("fenguan","fenguan03"); // applyUserName 的分管领导
         // 这里可以不写的，但需要改一下流程图中的condition，改成 ${holidayInfo.days>3}
         map.put("days",holidayInfo.getDays());
+        String businessKey = key+":"+applyUserName; // 设置一个businessKey
         // 启动流程实例，并设置流程变量的值（把map传入）
-        ProcessInstance processInstance = runtimeService.startProcessInstanceByKey(key, map);
+        ProcessInstance processInstance = runtimeService.startProcessInstanceByKey(key,businessKey, map);
         // 输出
         logger.info("流程实例名称="+processInstance.getName());
         logger.info("流程定义id=="+processInstance.getProcessDefinitionId());
@@ -207,6 +208,5 @@ public class HolidayV2FlowTest {
                     +",taskId="+hi.getTaskId()+",durationInMillis="+hi.getDurationInMillis());
         }
     }
-
 
 }
