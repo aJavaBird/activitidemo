@@ -20,6 +20,8 @@ import java.util.Map;
  * 3、如果请假天数大于3天，则需要分管领导审批，之后是人事审批；
  * 4、如果请假天数小于等于3天，则直接到人事审批
  * 本例使用了排他网关，完善了 HolidayFlowTest 中的遗留问题（申请天数大于3天<比如4天>时的流程问题）
+ * 但是本例中也有一些不足之处，就是在审批的时候，领导可能会同意，也可能不同意，本例默认走的都是同意，不同意应该怎么走呢？
+ * 另外，如果请假请到一半，请假者不想请假了，可以直接撤销流程吗？
  * */
 public class HolidayV2FlowTest {
     private static Logger logger = Logger.getLogger(HolidayV2FlowTest.class);
@@ -34,7 +36,7 @@ public class HolidayV2FlowTest {
         String flowKey = "holidayV2"; // 这个key是 act_re_procdef 表中的key，同时也是 bpmn 文件中的 process 的 id
         // 以下每个方法为独立的一个步骤，理论上说，只能有一个方法运行，其他方法都应该注释了，否则不好看执行效果
         // 1、部署流程，需呀部署流程后，才能进行后续操作
-        doDeployment();
+//        doDeployment();
         // 2、zhangsan 申请流程，流程启动
 //        startProcess(flowKey,"wangwu");
         String approver = "zuzhang02"; // 审批人
@@ -46,9 +48,9 @@ public class HolidayV2FlowTest {
         // 5、查询历史信息
         /**  查询 act_hi_actinst 表，条件：根据 processInstanceId 查询
          * 也可以查询 act_hi_taskinst 表，但是这个表查询的数据不包含网管节点，仅为任务节点 */
-        String processInstanceId = "57501"; // 这个其实就是 act_hi_procinst 表 的 ID_
-        logger.info("历史信息如下：");
-        findHistoryInfo(processInstanceId); // 也可以使用 processDefinitionId 查询，但是需要改一下代码
+//        String processInstanceId = "57501"; // 这个其实就是 act_hi_procinst 表 的 ID_
+//        logger.info("历史信息如下：");
+//        findHistoryInfo(processInstanceId); // 也可以使用 processDefinitionId 查询，但是需要改一下代码
     }
 
     /** 手动部署

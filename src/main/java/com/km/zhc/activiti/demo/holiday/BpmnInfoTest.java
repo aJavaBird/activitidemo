@@ -1,5 +1,6 @@
 package com.km.zhc.activiti.demo.holiday;
 
+import com.km.zhc.activiti.demo.util.BpmnUtil;
 import org.activiti.bpmn.model.BpmnModel;
 import org.activiti.bpmn.model.Process;
 import org.activiti.bpmn.model.UserTask;
@@ -22,22 +23,9 @@ public class BpmnInfoTest {
          * SELECT * FROM act_re_procdef; -- 流程定义表
          * */
         String flowKeyId = "holidayV2:1:25004";
-        // 从bpmn文件 查询流程信息
-        findBpmnInfo(flowKeyId);
-    }
 
-    /** 根据流程id查询流程节点列表信息
-     * 流程id 就是 bpmn 文件中的 process 的 id
-     * */
-    public static void findBpmnInfo(String flowKeyId){
-        // 获取引擎
-        ProcessEngine processEngine = ProcessEngines.getDefaultProcessEngine();
-        // 获取RepositoryService
-        RepositoryService repositoryService = processEngine.getRepositoryService();
-        BpmnModel bpmnModel = repositoryService.getBpmnModel(flowKeyId);
-        List<Process> processes = bpmnModel.getProcesses();
-        //通过Process获取UserTask信息
-        List<UserTask> userTaskList = processes.get(0).findFlowElementsOfType(UserTask.class);
+        // 从bpmn文件 查询流程信息
+        List<UserTask> userTaskList = BpmnUtil.findBpmnInfo(flowKeyId);
         // 输出
         for (UserTask task : userTaskList) {
             JSONObject jsonObj = new JSONObject(task);
