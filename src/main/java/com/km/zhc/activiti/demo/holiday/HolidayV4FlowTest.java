@@ -7,19 +7,15 @@ import org.activiti.engine.history.HistoricActivityInstanceQuery;
 import org.activiti.engine.history.HistoricTaskInstance;
 import org.activiti.engine.impl.persistence.entity.ProcessDefinitionEntity;
 import org.activiti.engine.impl.pvm.process.ActivityImpl;
-import org.activiti.engine.impl.util.json.JSONObject;
 import org.activiti.engine.repository.Deployment;
 import org.activiti.engine.runtime.ProcessInstance;
 import org.activiti.engine.task.IdentityLink;
 import org.activiti.engine.task.Task;
 import org.apache.log4j.Logger;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
-/** 请假流程测试
+/** 请假流程测试（依然使用了holidayV4的请假流程，但是流程图重新画了，不同意的线都去掉了，改成使用程序控制，不同意则退回到申请人重走流程）
  * 请假流程如下：
  * 1、填写申请/调整
  * 2、组长审批
@@ -28,62 +24,37 @@ import java.util.Map;
  * 5、财务审批
  * 其中，第2、3、4、5步中，任意一步选择了不同意，都是退回到第1步，申请人需要调整申请，重走流程
  *
- * 本例使用的是 src/main/resources/diagram/holidayV3.bpmn
- * 本类中不进行部署，部署请参看 HolidayV3FlowDeployTest
- * 本例完善了 HolidayV2FlowTest 中的领导不同意问题，也实现了流程发起者撤回（取消）和流程驳回（退回上一步）
+ * 本例使用的是 src/main/resources/diagram/holidayV4.bpmn
+ * 本例完善了 HolidayV3FlowTest 中的退回上一步漏洞，参考 testRejectFlow 方法
+ * 本例的流程图也更简洁了，另外流程图bpmn设置了名称
  *
- * 本例依然存在问题：退回上一步存在漏洞，仅支持一次退回上一步，多次退回上一步会出现问题
- * 此问题需要结合 getActivityInfo、rejectFlow、getHistorySencondToLastTask 修改代码后解决
- * 目前暂时没时间，等有时间了，我就更新一个新方法 rejectFlowV2 解决这个问题
  * */
-public class HolidayV3FlowTest {
-    private static Logger logger = Logger.getLogger(HolidayV3FlowTest.class);
+public class HolidayV4FlowTest {
+    private static Logger logger = Logger.getLogger(HolidayV4FlowTest.class);
     private static final String USER_TASK_TYPE = "userTask";
     /**
      * 本例使用的是 src/main/resources/diagram/holidayV3.bpmn
-     * 本例包含3个子例，实现一体化测试，对应3个方法：
-     * testDisagree：测试领导意见为不同意（请假5天）
-     * testCancelFlow：测试撤回（取消）流程（请假2天），撤回后的流程将回到流程的第一步
+     * 本例包含2个子例，实现一体化测试，对应3个方法：
+     * testDisagree：测试领导意见为不同意（请假5天），不同意则执行退回到申请人操作（即撤回）
      * testRejectFlow：测试驳回（退回上一步）流程（请假2天）
      * */
     public static void main(String[] args) {
-        String flowKey = "holidayV3"; // 这个key是 act_re_procdef 表中的key，同时也是 bpmn 文件中的 process 的 id
+        String flowKey = "holidayV4"; // 这个key是 act_re_procdef 表中的key，同时也是 bpmn 文件中的 process 的 id
+
+        // 1、部署流程，需呀部署流程后，才能进行后续操作
+//        doDeployment();
 
         int times = 1;
 
 //        testDisagree(flowKey,times); // 测试领导意见为不同意（请假5天）
+//        findHistoryInfo("80001");
 
-        times = 3;
-//        testCancelFlow(flowKey,times); // 测试撤回（取消）流程（请假2天）
-
-        findHistoryInfo("67501");
-
-        times = 4;
+        times = 2;
 //        testRejectFlow(flowKey,times); // 测试驳回（退回上一步）流程（请假2天）
-
-//        getActivityInfo("67536");
+        findHistoryInfo("85001");
 
     }
 
-
-    public static void getActivityInfo(String taskId){
-        ProcessEngine processEngine = ProcessEngines.getDefaultProcessEngine();
-        // 根据要跳转的任务ID获取其任务
-        HistoricTaskInstance hisTask = processEngine.getHistoryService()
-                .createHistoricTaskInstanceQuery().taskId(taskId)
-                .singleResult();
-        // 进而获取流程实例
-        ProcessInstance instance = processEngine.getRuntimeService()
-                .createProcessInstanceQuery()
-                .processInstanceId(hisTask.getProcessInstanceId())
-                .singleResult();
-        //取得流程定义
-        ProcessDefinitionEntity definition = (ProcessDefinitionEntity) processEngine.getRepositoryService().getProcessDefinition(hisTask.getProcessDefinitionId());
-        //获取历史任务的Activity
-        ActivityImpl hisActivity = definition.findActivity(hisTask.getTaskDefinitionKey());
-        //实现跳转
-        logger.info("hisActivity-id: "+hisActivity.getId());
-    }
 
     /** 测试领导意见为不同意 */
     public static void testDisagree(String flowKey,int times){
@@ -100,82 +71,24 @@ public class HolidayV3FlowTest {
         String processInstanceId = startProcess(flowKey,variableMap);
         logger.info("此例的processInstanceId = " + processInstanceId);
         // 1.2、zhangsan 完成表单申请填写
-        completTaskByBusinessKey(flowKey,businessKey,null);
-
-        Map<String,Object> varMap = new HashMap<String,Object>();
+        completeTaskByBusinessKey(flowKey,businessKey,null);
 
         // 查询待办
         findNeedDealByBusinessKey(flowKey,businessKey);
-        varMap.clear();
-        varMap.put("isAgree1",true); // 组长同意
+        // 组长同意，因为默认就是同意（已去掉排他网关），所以不需要变量来控制，直接完成就行
         // 根据businessKey完成流程 zuzhang
-        completTaskByBusinessKey(flowKey,businessKey,varMap);
+        completeTaskByBusinessKey(flowKey,businessKey,null);
 
         // 查询待办
         findNeedDealByBusinessKey(flowKey,businessKey);
-        varMap.clear();
-        varMap.put("isAgree2",true); // 项目经理同意
+        // 项目经理同意，因为默认就是同意（已去掉排他网关），所以不需要变量来控制，直接完成就行
         // 根据businessKey完成流程 xiangmujingli
-        completTaskByBusinessKey(flowKey,businessKey,varMap);
+        completeTaskByBusinessKey(flowKey,businessKey,null);
 
         // 查询待办
         findNeedDealByBusinessKey(flowKey,businessKey);
-        varMap.clear();
-        varMap.put("isAgree3",false); // 部门领导不同意
-        // 根据businessKey完成流程 renshi
-        completTaskByBusinessKey(flowKey,businessKey,varMap);
-
-        logger.info("最后查看一下待办信息：");
-        // 查询待办
-        findNeedDealByBusinessKey(flowKey,businessKey);
-        logger.info("历史信息如下：");
-        // 查询历史信息
-        findHistoryInfo(processInstanceId);
-    }
-
-    /** 测试发起者撤回（取消）流程 */
-    public static void testCancelFlow(String flowKey,int times){
-        // 创建请假pojo对象
-        HolidayInfo holidayInfo = new HolidayInfo().setDays(2).setFromDate("2021-10-08").setToDate("2021-10-10").setRemark("zhc请假测试");
-        String applyUser = "zhangsan",zuzhang="tongzuzhang", xiangmujingli="zhangjingli"
-                , renshi="lirenshi,weirenshi", bumenjingli="jizong", caiwu="zhuocaiwu,jicaiwu";
-        Map<String,Object> variableMap = generateVariableMap(flowKey,times,applyUser
-                ,zuzhang, xiangmujingli, renshi, bumenjingli, caiwu,holidayInfo);
-        String businessKey = variableMap.get("businessKey")+"";
-        logger.info("此例的businessKey = " + businessKey);
-
-        // 1.1、zhangsan 申请流程，流程启动
-        String processInstanceId = startProcess(flowKey,variableMap);
-        logger.info("此例的processInstanceId = " + processInstanceId);
-        // 1.2、zhangsan 完成表单申请填写
-        completTaskByBusinessKey(flowKey,businessKey,null);
-
-        Map<String,Object> varMap = new HashMap<String,Object>();
-
-        // 查询待办
-        findNeedDealByBusinessKey(flowKey,businessKey);
-        varMap.clear();
-        varMap.put("isAgree1",true); // 组长同意
-        // 根据businessKey完成流程 zuzhang
-        completTaskByBusinessKey(flowKey,businessKey,varMap);
-
-        // 查询待办
-        findNeedDealByBusinessKey(flowKey,businessKey);
-        varMap.clear();
-        varMap.put("isAgree2",true); // 项目经理同意
-        // 根据businessKey完成流程 xiangmujingli
-        completTaskByBusinessKey(flowKey,businessKey,varMap);
-
-        // 查询待办
-        findNeedDealByBusinessKey(flowKey,businessKey);
-        varMap.clear();
-        varMap.put("isAgree4",true); // 人事同意
-        // 根据businessKey完成流程 renshi
-        completTaskByBusinessKey(flowKey,businessKey,varMap);
-
-        // 查询待办
-        findNeedDealByBusinessKey(flowKey,businessKey);
-        // 发起者撤回（取消）流程
+        // 部门领导不同意，因为默认就是同意（已去掉排他网关），所以不同意需要进行撤回操作
+        // 退回到发起人，重走流程
         cancleFlow(processInstanceId);
 
         logger.info("最后查看一下待办信息：");
@@ -184,9 +97,11 @@ public class HolidayV3FlowTest {
         logger.info("历史信息如下：");
         // 查询历史信息
         findHistoryInfo(processInstanceId);
+
+        logger.info("注意：本例中的所有操作，建议业务上新建一张业务表来记录审批人、审批意见等内容，并在通过或不通过时记录到业务表中");
     }
 
-    /** 测试发起者驳回（退回上一步）流程 */
+    /** 测试发起者驳回（退回上一步）流程（实现直线条退回上一步，平行审批因为每一条线可能会有多个审批，故未做兼容） */
     public static void testRejectFlow(String flowKey,int times){
         // 创建请假pojo对象
         HolidayInfo holidayInfo = new HolidayInfo().setDays(2).setFromDate("2021-10-08").setToDate("2021-10-10").setRemark("zhc请假测试");
@@ -201,34 +116,34 @@ public class HolidayV3FlowTest {
         String processInstanceId = startProcess(flowKey,variableMap);
         logger.info("此例的processInstanceId = " + processInstanceId);
         // 1.2、zhangsan 完成表单申请填写
-        completTaskByBusinessKey(flowKey,businessKey,null);
-
-        Map<String,Object> varMap = new HashMap<String,Object>();
+        completeTaskByBusinessKey(flowKey,businessKey,null);
 
         // 查询待办
         findNeedDealByBusinessKey(flowKey,businessKey);
-        varMap.clear();
-        varMap.put("isAgree1",true); // 组长同意
+        // 组长同意，因为默认就是同意（已去掉排他网关），所以不需要变量来控制，直接完成就行
         // 根据businessKey完成流程 zuzhang
-        completTaskByBusinessKey(flowKey,businessKey,varMap);
+        completeTaskByBusinessKey(flowKey,businessKey,null);
 
         // 查询待办
         findNeedDealByBusinessKey(flowKey,businessKey);
-        varMap.clear();
-        varMap.put("isAgree2",true); // 项目经理同意
+        // 项目经理同意，因为默认就是同意（已去掉排他网关），所以不需要变量来控制，直接完成就行
         // 根据businessKey完成流程 xiangmujingli
-        completTaskByBusinessKey(flowKey,businessKey,varMap);
+        completeTaskByBusinessKey(flowKey,businessKey,null);
 
         // 查询待办
         findNeedDealByBusinessKey(flowKey,businessKey);
-        varMap.clear();
-        varMap.put("isAgree4",true); // 人事同意
+        // 人事同意，因为默认就是同意（已去掉排他网关），所以不需要变量来控制，直接完成就行
         // 根据businessKey完成流程 renshi
-        completTaskByBusinessKey(flowKey,businessKey,varMap);
+        completeTaskByBusinessKey(flowKey,businessKey,null);
 
         // 查询待办
         findNeedDealByBusinessKey(flowKey,businessKey);
-        // 发起者驳回（退回上一步）流程
+        // 财务驳回（退回上一步）流程
+        rejectFlow(processInstanceId);
+
+        // 查询待办
+        findNeedDealByBusinessKey(flowKey,businessKey);
+        // 再次驳回（退回上一步）流程
         rejectFlow(processInstanceId);
 
         logger.info("最后查看一下待办信息：");
@@ -299,7 +214,7 @@ public class HolidayV3FlowTest {
     }
 
     /**　根据businessKey完成流程(newVariables为需要更改或者设置的变量) */
-    public static void completTaskByBusinessKey(String flowKey,String businessKey,Map<String,Object> newVariables){
+    public static void completeTaskByBusinessKey(String flowKey,String businessKey,Map<String,Object> newVariables){
         // 获取引擎
         ProcessEngine processEngine = ProcessEngines.getDefaultProcessEngine();
         // 获取taskService
@@ -352,7 +267,8 @@ public class HolidayV3FlowTest {
 
     /**　审批者驳回流程（退回上一步），此方法存在漏洞，多次退回上一步会出现问题 */
     public static void rejectFlow(String processInstanceId){
-        HistoricActivityInstance hisInstance = getHistorySencondToLastTask(processInstanceId);
+//        HistoricActivityInstance hisInstance = getHistorySencondToLastTask(processInstanceId);
+        HistoricActivityInstance hisInstance = getHistorySencondToLastTaskV2(processInstanceId);
         if(hisInstance!=null){
             String taskId = hisInstance.getTaskId();
             FlowBackUtils.taskRollback(taskId);
@@ -546,6 +462,101 @@ public class HolidayV3FlowTest {
             }
         }
         return null;
+    }
+
+    /** 查询历史信息中的倒数第2个用户任务（这里并没有考虑平行审批的情况，因为平行审批会比较复杂，因为平行中的一条线上可以有多级审批） */
+    public static HistoricActivityInstance getHistorySencondToLastTaskV2(String processInstanceId){
+        // 获取引擎
+        ProcessEngine processEngine = ProcessEngines.getDefaultProcessEngine();
+        // 获取HistoryService
+        HistoryService historyService = processEngine.getHistoryService();
+        // 获取 actinst表的查询对象
+        HistoricActivityInstanceQuery instanceQuery = historyService.createHistoricActivityInstanceQuery();
+        instanceQuery.processInstanceId(processInstanceId);
+        // 增加排序操作,orderByHistoricActivityInstanceStartTime 根据开始时间排序 desc 降序
+        instanceQuery.orderByHistoricActivityInstanceStartTime().asc();
+        // 查询所有内容
+        List<HistoricActivityInstance> activityInstanceList = instanceQuery.list();
+
+        if(activityInstanceList!=null && !activityInstanceList.isEmpty()){
+            // 第一个节点
+            HistoricActivityInstance firstHisIns = null;
+            // 最后一个节点
+            HistoricActivityInstance lastHisIns = null;
+            // 有效的历史
+            List<HistoricActivityInstance> activityInstanceEffectiveList = new ArrayList<>();
+            Set<String> effctiveActivities = new HashSet<>();
+            for (int i=0,l=activityInstanceList.size();i<l;i++) {
+                HistoricActivityInstance hi = activityInstanceList.get(i);
+                if(USER_TASK_TYPE.equals(hi.getActivityType())){
+                    lastHisIns = hi;
+                    if(firstHisIns==null){
+                        firstHisIns = hi;
+                        activityInstanceEffectiveList.add(hi);
+                        effctiveActivities.add(hi.getActivityId());
+                    }else{
+                        if(hi.getActivityId().equals(firstHisIns.getActivityId())){
+                            activityInstanceEffectiveList.clear();
+                            effctiveActivities.clear();
+                        }
+                        if(effctiveActivities.contains(hi.getActivityId())){
+                            continue;
+                        }
+                        activityInstanceEffectiveList.add(hi);
+                        effctiveActivities.add(hi.getActivityId());
+                    }
+                }
+            }
+            if(activityInstanceEffectiveList.size()>2){
+                for(int i=0,l=activityInstanceEffectiveList.size();i<l;i++){
+                    if(activityInstanceEffectiveList.get(i).getActivityId().equals(lastHisIns.getActivityId()) && i>=1){
+                        return activityInstanceEffectiveList.get(i-1);
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    public static String getActivityId(String taskId){
+        ProcessEngine processEngine = ProcessEngines.getDefaultProcessEngine();
+        // 根据要跳转的任务ID获取其任务
+        HistoricTaskInstance hisTask = processEngine.getHistoryService()
+                .createHistoricTaskInstanceQuery().taskId(taskId)
+                .singleResult();
+        // 进而获取流程实例
+        ProcessInstance instance = processEngine.getRuntimeService()
+                .createProcessInstanceQuery()
+                .processInstanceId(hisTask.getProcessInstanceId())
+                .singleResult();
+        //取得流程定义
+        ProcessDefinitionEntity definition = (ProcessDefinitionEntity) processEngine.getRepositoryService().getProcessDefinition(hisTask.getProcessDefinitionId());
+        //获取历史任务的Activity
+        ActivityImpl hisActivity = definition.findActivity(hisTask.getTaskDefinitionKey());
+        return hisActivity.getId();
+    }
+
+    /** 手动部署
+     * 开发中更推荐自动部署，即使用 SpringProcessEngineConfiguration，配置 deploymentResources
+     * */
+    public static void doDeployment(){
+        /**
+         * SELECT * FROM act_re_deployment; -- 流程定义部署表，记录流程部署信息
+         * SELECT * FROM act_re_procdef; -- 流程定义表，记录流程定义信息
+         * SELECT * FROM act_ge_bytearray; -- 资源表
+         * */
+        // 1、创建ProcessEngine
+        ProcessEngine processEngine = ProcessEngines.getDefaultProcessEngine();
+        // 2、得到RepositoryService实例
+        RepositoryService repositoryService = processEngine.getRepositoryService();
+        // 3、使用RepositoryService进行部署
+        Deployment deployment = repositoryService.createDeployment()
+                .addClasspathResource("diagram/holidayV4.bpmn") // 添加bpmn资源
+                .addClasspathResource("diagram/holidayV4.png") // 添加png资源
+                .name("请假单v4").deploy();
+        // 4、输出部署信息
+        logger.info("流程部署id：" + deployment.getId());
+        logger.info("流程部署名称：" + deployment.getName());
     }
 
 }
